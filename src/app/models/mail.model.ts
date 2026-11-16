@@ -162,8 +162,28 @@ export interface CategoryPlugin {
   enrich: (email: RawEmailMessage) => Partial<CategorizedEmail>;
 }
 
-export interface ForwardDraftRequest {
-  email: CategorizedEmail;
-  toAddress: string;
-  note: string;
+export type ComposeMode = 'new' | 'reply' | 'forward';
+
+export interface OutboundEmailRequest {
+  mode: ComposeMode;
+  fromAccountId: string;
+  to: string;
+  cc?: string;
+  subject: string;
+  body: string;
+  originalEmail?: CategorizedEmail;
 }
+
+export interface SentEmailRecord {
+  id: string;
+  mode: ComposeMode;
+  fromAccountId: string;
+  fromEmail: string;
+  to: string;
+  cc?: string;
+  subject: string;
+  body: string;
+  threadId?: string;
+  sentAt: string;
+}
+

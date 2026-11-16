@@ -72,6 +72,15 @@
       </div>
 
       <button
+        mat-stroked-button
+        class="compose-toolbar-btn"
+        (click)="openNewEmailModal()"
+      >
+        <mat-icon>edit</mat-icon>
+        Compose
+      </button>
+
+      <button
         mat-flat-button
         color="primary"
         (click)="gmailService.syncAllAccounts()"
@@ -124,6 +133,16 @@
   <div class="workspace-grid">
     <!-- Left Category Navigation Rail -->
     <aside class="category-sidebar" aria-label="Email Categories">
+      <button
+        mat-flat-button
+        color="primary"
+        class="sidebar-compose-btn"
+        (click)="openNewEmailModal()"
+      >
+        <mat-icon>edit</mat-icon>
+        New Email
+      </button>
+
       <div class="sidebar-section-label">UNIFIED STREAM</div>
 
       <button
@@ -538,6 +557,13 @@
                       >
                         <mat-icon>archive</mat-icon>
                         Archive Issue
+                      </button>
+                      <button
+                        mat-stroked-button
+                        (click)="openReplyModal(activeNl)"
+                      >
+                        <mat-icon>reply</mat-icon>
+                        Reply
                       </button>
                       <button
                         mat-stroked-button
@@ -965,6 +991,10 @@
                   <p class="stream-snippet">{{ item.raw.bodyText || item.raw.snippet }}</p>
 
                   <div class="stream-actions">
+                    <button mat-stroked-button (click)="openReplyModal(item, $event)">
+                      <mat-icon>reply</mat-icon>
+                      Reply
+                    </button>
                     <button mat-stroked-button (click)="openForwardModal(item, $event)">
                       <mat-icon>forward</mat-icon>
                       Forward
@@ -993,51 +1023,119 @@
   </div>
 
   <!-- =============================================================== -->
-  <!-- MODAL 1: FORWARD NEWSLETTER / EMAIL                             -->
+  <!-- MODAL 1: COMPOSE NEW / REPLY / FORWARD EMAIL (MULTI-SENDER)     -->
   <!-- =============================================================== -->
-  @if (forwardingEmail(); as fwd) {
+  @if (showComposeModal() || forwardingEmail()) {
     <div class="modal-backdrop" (click)="closeForwardModal()">
-      <mat-card class="modal-dialog" (click)="$event.stopPropagation()">
+      <mat-card class="modal-dialog wide-modal" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <h3>
-            <mat-icon>forward_to_inbox</mat-icon>
-            Forward via {{ fwd.raw.accountEmail }}
+            <mat-icon>{{
+              composeMode() === 'reply'
+                ? 'reply'
+                : composeMode() === 'forward'
+                ? 'forward_to_inbox'
+                : 'edit'
+            }}</mat-icon>
+            {{
+              composeMode() === 'reply'
+                ? 'Reply to Email'
+                : composeMode() === 'forward'
+                ? 'Forward Email'
+                : 'Compose New Email'
+            }}
           </h3>
           <button mat-icon-button (click)="closeForwardModal()">
             <mat-icon>close</mat-icon>
           </button>
         </div>
 
-        <p class="modal-subtitle">
-          <strong>Subject:</strong> Fwd: {{ fwd.raw.subject }}
-        </p>
+        <div class="form-stack" style="margin-top: 12px">
+          <div>
+            <label class="field-label" for="compose-from-select">From Account (Sender)</label>
+            <select
+              id="compose-from-select"
+              class="text-input sender-select"
+              [ngModel]="composeFromAccountId()"
+              (ngModelChange)="composeFromAccountId.set($event)"
+            >
+              @for (acct of accounts(); track acct.id) {
+                <option [value]="acct.id">
+                  {{ acct.label }} — {{ acct.email }}
+                </option>
+              }
+            </select>
+          </div>
 
-        <div class="form-stack">
-          <label class="field-label">Recipient Email</label>
-          <input
-            type="email"
-            class="text-input"
-            placeholder="colleague@example.com"
-            [ngModel]="forwardTo()"
-            (ngModelChange)="forwardTo.set($event)"
-          />
+          <div class="two-col">
+            <div>
+              <label class="field-label">To (Recipient)</label>
+              <input
+                type="email"
+                class="text-input"
+                placeholder="recipient@example.com"
+                [ngModel]="forwardTo()"
+                (ngModelChange)="forwardTo.set($event)"
+              />
+            </div>
+            <div>
+              <label class="field-label">Cc (Optional)</label>
+              <input
+                type="text"
+                class="text-input"
+                placeholder="cc@example.com"
+                [ngModel]="composeCc()"
+                (ngModelChange)="composeCc.set($event)"
+              />
+            </div>
+          </div>
 
-          <label class="field-label">Personal Note (Prepended)</label>
-          <textarea
-            rows="3"
-            class="text-input"
-            [ngModel]="forwardNote()"
-            (ngModelChange)="forwardNote.set($event)"
-          ></textarea>
-
-          <label class="checkbox-row">
+          <div>
+            <label class="field-label">Subject</label>
             <input
-              type="checkbox"
-              [ngModel]="forwardArchiveAfter()"
-              (ngModelChange)="forwardArchiveAfter.set($event)"
+              type="text"
+              class="text-input"
+              placeholder="Subject"
+              [ngModel]="composeSubject()"
+              (ngModelChange)="composeSubject.set($event)"
             />
-            <span>Automatically archive this email after forwarding</span>
-          </label>
+          </div>
+
+          <div>
+            <label class="field-label">{{
+              composeMode() === 'forward' ? 'Personal Note (Prepended)' : 'Message Body'
+            }}</label>
+            <textarea
+              rows="5"
+              class="text-input"
+              placeholder="Write your message..."
+              [ngModel]="forwardNote()"
+              (ngModelChange)="forwardNote.set($event)"
+            ></textarea>
+          </div>
+
+          @if (forwardingEmail(); as orig) {
+            <div class="quoted-context-box">
+              <div class="quoted-context-header">
+                {{
+                  composeMode() === 'reply' ? 'Replying to' : 'Forwarding'
+                }}
+                <strong>{{ orig.raw.fromName }} &lt;{{ orig.raw.fromEmail }}&gt;</strong>:
+              </div>
+              <div class="quoted-context-snippet">
+                {{ orig.raw.snippet }}
+              </div>
+            </div>
+
+            <label class="checkbox-row">
+              <input
+                type="checkbox"
+                [ngModel]="forwardArchiveAfter()"
+                (ngModelChange)="forwardArchiveAfter.set($event)"
+              />
+              <span>Automatically archive original email after sending</span>
+            </label>
+          }
         </div>
 
         <div class="modal-footer">
@@ -1049,7 +1147,11 @@
             [disabled]="!forwardTo().trim()"
           >
             <mat-icon>send</mat-icon>
-            Send & {{ forwardArchiveAfter() ? 'Archive' : 'Keep' }}
+            {{
+              forwardingEmail()
+                ? 'Send & ' + (forwardArchiveAfter() ? 'Archive' : 'Keep')
+                : 'Send Email'
+            }}
           </button>
         </div>
       </mat-card>

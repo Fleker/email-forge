@@ -280,6 +280,31 @@
   width: 100%;
 }
 
+.sidebar-compose-btn {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.sender-select {
+  background: #ffffff;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.quoted-context-box {
+  background: #f8fafc;
+  border-left: 3px solid #94a3b8;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.quoted-context-snippet {
+  margin-top: 4px;
+  font-style: italic;
+}
+
 /* Main Viewport */
 .category-viewport {
   overflow-y: auto;

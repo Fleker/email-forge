@@ -150,6 +150,68 @@ describe('Mail Forge — AppComponent & CategoryRegistryService', () => {
     expect(app.activeEmails().some((e) => e.raw.id === nl.raw.id)).toBeFalse();
   });
 
+  it('should compose a new email using any available account as sender', async () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+    const gmail = TestBed.inject(GmailApiService);
+
+    app.openNewEmailModal();
+    expect(app.showComposeModal()).toBeTrue();
+    expect(app.composeMode()).toBe('new');
+
+    // Switch sender to the second account (fleker.dev@gmail.com)
+    app.composeFromAccountId.set('acct_dev');
+    app.forwardTo.set('collaborator@example.com');
+    app.composeCc.set('team@example.com');
+    app.composeSubject.set('Launching Email Forge');
+    app.forwardNote.set('Here is the static web app link!');
+
+    await app.submitForward();
+
+    expect(app.showComposeModal()).toBeFalse();
+    expect(gmail.sentMessages().length).toBe(1);
+    expect(gmail.sentMessages()[0].fromAccountId).toBe('acct_dev');
+    expect(gmail.sentMessages()[0].fromEmail).toBe('fleker.dev@gmail.com');
+    expect(gmail.sentMessages()[0].to).toBe('collaborator@example.com');
+    expect(gmail.sentMessages()[0].cc).toBe('team@example.com');
+    expect(gmail.sentMessages()[0].subject).toBe('Launching Email Forge');
+  });
+
+  it('should reply to an email, quote original text, and allow selecting sender account', async () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+    const gmail = TestBed.inject(GmailApiService);
+
+    const directMsg = app
+      .activeEmails()
+      .find((e) => e.raw.id === 'msg_inbox_1')!;
+    app.openReplyModal(directMsg);
+
+    expect(app.composeMode()).toBe('reply');
+    expect(app.forwardTo()).toBe('alex.rivera@gmail.com');
+    expect(app.composeSubject()).toBe(
+      'Re: Tried out the Libertopolis export in Map-Forge!'
+    );
+    expect(app.composeFromAccountId()).toBe('acct_personal');
+
+    app.forwardNote.set('Sunday morning in Brooklyn works great!');
+    app.forwardArchiveAfter.set(true);
+    await app.submitForward();
+
+    expect(gmail.sentMessages().length).toBe(1);
+    expect(gmail.sentMessages()[0].mode).toBe('reply');
+    expect(gmail.sentMessages()[0].threadId).toBe('th_inbox_1');
+    expect(gmail.sentMessages()[0].body).toContain(
+      'Sunday morning in Brooklyn works great!'
+    );
+    expect(gmail.sentMessages()[0].body).toContain(
+      'Alex Rivera <alex.rivera@gmail.com> wrote:'
+    );
+    expect(
+      app.activeEmails().some((e) => e.raw.id === 'msg_inbox_1')
+    ).toBeFalse();
+  });
+
   it('should register a custom category rule dynamically and extract regex metadata', () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;

@@ -17,6 +17,7 @@ import {
   CategorizedEmail,
   CategoryId,
   CategoryViewTemplate,
+  ComposeMode,
   CustomCategoryRule,
   EventRsvpStatus,
   GmailAccount,
@@ -67,10 +68,15 @@ export class AppComponent implements OnInit {
   // Modals state
   readonly showOAuthModal = signal<boolean>(false);
   readonly showAddCategoryModal = signal<boolean>(false);
+  readonly showComposeModal = signal<boolean>(false);
+  readonly composeMode = signal<ComposeMode>('new');
   readonly forwardingEmail = signal<CategorizedEmail | null>(null);
 
-  // Forward modal fields
+  // Unified Compose / Reply / Forward fields
+  readonly composeFromAccountId = signal<string>('');
   readonly forwardTo = signal<string>('');
+  readonly composeCc = signal<string>('');
+  readonly composeSubject = signal<string>('');
   readonly forwardNote = signal<string>('');
   readonly forwardArchiveAfter = signal<boolean>(true);
 
@@ -364,37 +370,108 @@ export class AppComponent implements OnInit {
     this.notify(`Archived ${ids.length} message(s)`);
   }
 
+  openNewEmailModal(): void {
+    const activeAcct = this.selectedAccountId();
+    const defaultFrom =
+      activeAcct !== 'all'
+        ? activeAcct
+        : this.accounts()[0]?.id || '';
+    this.composeMode.set('new');
+    this.forwardingEmail.set(null);
+    this.composeFromAccountId.set(defaultFrom);
+    this.forwardTo.set('');
+    this.composeCc.set('');
+    this.composeSubject.set('');
+    this.forwardNote.set('');
+    this.forwardArchiveAfter.set(false);
+    this.showComposeModal.set(true);
+  }
+
+  openReplyModal(email: CategorizedEmail, event?: Event): void {
+    event?.stopPropagation();
+    const subj = email.raw.subject.toLowerCase().startsWith('re:')
+      ? email.raw.subject
+      : `Re: ${email.raw.subject}`;
+    this.composeMode.set('reply');
+    this.forwardingEmail.set(email);
+    this.composeFromAccountId.set(email.raw.accountId);
+    this.forwardTo.set(email.raw.fromEmail);
+    this.composeCc.set('');
+    this.composeSubject.set(subj);
+    this.forwardNote.set('');
+    this.forwardArchiveAfter.set(true);
+    this.showComposeModal.set(true);
+  }
+
   openForwardModal(email: CategorizedEmail, event?: Event): void {
     event?.stopPropagation();
+    const subj = email.raw.subject.toLowerCase().startsWith('fwd:')
+      ? email.raw.subject
+      : `Fwd: ${email.raw.subject}`;
+    this.composeMode.set('forward');
     this.forwardingEmail.set(email);
+    this.composeFromAccountId.set(email.raw.accountId);
     this.forwardTo.set('');
+    this.composeCc.set('');
+    this.composeSubject.set(subj);
     this.forwardNote.set('Thought you might find this interesting:');
     this.forwardArchiveAfter.set(true);
+    this.showComposeModal.set(true);
   }
 
   closeForwardModal(): void {
+    this.showComposeModal.set(false);
     this.forwardingEmail.set(null);
   }
 
   async submitForward(): Promise<void> {
-    const email = this.forwardingEmail();
+    const mode = this.composeMode();
+    const original = this.forwardingEmail() || undefined;
     const to = this.forwardTo().trim();
-    if (!email || !to) return;
+    if (!to) return;
+
+    const fromAccountId =
+      this.composeFromAccountId() ||
+      original?.raw.accountId ||
+      this.accounts()[0]?.id ||
+      '';
+
+    const subject =
+      this.composeSubject().trim() ||
+      (original ? `Fwd: ${original.raw.subject}` : '(No Subject)');
 
     try {
-      await this.gmailService.forwardEmail(email, to, this.forwardNote());
-      if (this.forwardArchiveAfter()) {
-        await this.gmailService.archiveEmail(email.raw.id);
+      const sent = await this.gmailService.sendEmail({
+        mode,
+        fromAccountId,
+        to,
+        cc: this.composeCc().trim() || undefined,
+        subject,
+        body: this.forwardNote(),
+        originalEmail: original,
+      });
+
+      if (original && this.forwardArchiveAfter()) {
+        await this.gmailService.archiveEmail(original.raw.id);
       }
+
+      this.showComposeModal.set(false);
       this.forwardingEmail.set(null);
+
+      const actionVerb =
+        mode === 'reply'
+          ? 'Replied'
+          : mode === 'forward'
+          ? 'Forwarded'
+          : 'Sent email';
       this.notify(
-        `Forwarded "${email.raw.subject.slice(0, 36)}" to ${to}${
-          this.forwardArchiveAfter() ? ' & archived' : ''
+        `${actionVerb} from ${sent.fromEmail} to ${to}${
+          original && this.forwardArchiveAfter() ? ' & archived' : ''
         }`
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.notify(`Forward failed: ${msg}`);
+      this.notify(`Send failed: ${msg}`);
     }
   }
 

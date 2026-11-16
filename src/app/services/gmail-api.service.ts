@@ -4,7 +4,9 @@ import {
   CategoryId,
   GmailAccount,
   OAuthClientConfig,
+  OutboundEmailRequest,
   RawEmailMessage,
+  SentEmailRecord,
 } from '../models/mail.model';
 import { CategoryRegistryService } from './category-registry.service';
 
@@ -30,6 +32,7 @@ export class GmailApiService {
   readonly oauthConfig = signal<OAuthClientConfig>(this.loadOAuthConfig());
   readonly accounts = signal<GmailAccount[]>(this.loadAccounts());
   readonly rawMessages = signal<RawEmailMessage[]>(this.loadCachedMessages());
+  readonly sentMessages = signal<SentEmailRecord[]>([]);
   readonly isSyncing = signal<boolean>(false);
   readonly lastSyncTime = signal<string | null>(null);
   readonly syncError = signal<string | null>(null);
@@ -427,43 +430,86 @@ export class GmailApiService {
     }
   }
 
-  async forwardEmail(
-    email: CategorizedEmail,
-    toAddress: string,
-    note: string
-  ): Promise<void> {
-    const account = this.accounts().find((a) => a.id === email.raw.accountId);
-    const subject = email.raw.subject.toLowerCase().startsWith('fwd:')
-      ? email.raw.subject
-      : `Fwd: ${email.raw.subject}`;
+  async sendEmail(request: OutboundEmailRequest): Promise<SentEmailRecord> {
+    const senderAccount =
+      this.accounts().find((a) => a.id === request.fromAccountId) ||
+      this.accounts()[0];
+    if (!senderAccount) {
+      throw new Error('No sender Gmail account available.');
+    }
 
-    const forwardBody = [
-      note.trim(),
-      '',
-      '---------- Forwarded message ---------',
-      `From: ${email.raw.fromName} <${email.raw.fromEmail}>`,
-      `Date: ${new Date(email.raw.timestamp).toLocaleString()}`,
-      `Subject: ${email.raw.subject}`,
-      `To: ${email.raw.toEmail}`,
-      '',
-      email.raw.bodyText || email.raw.snippet,
-    ].join('\r\n');
+    const to = request.to.trim();
+    if (!to) {
+      throw new Error('Recipient email address is required.');
+    }
 
-    if (account && !account.isDemo) {
-      const token = await this.ensureValidAccessToken(account);
-      const rfc2822 = [
-        `To: ${toAddress}`,
-        `From: ${account.email}`,
-        `Subject: ${subject}`,
-        'Content-Type: text/plain; charset="UTF-8"',
+    const cc = request.cc?.trim() || undefined;
+    const subject = request.subject.trim() || '(No Subject)';
+    let fullBody = request.body.trim();
+
+    if (request.mode === 'reply' && request.originalEmail) {
+      const orig = request.originalEmail.raw;
+      const quotedLines = (orig.bodyText || orig.snippet)
+        .split(/\r?\n/)
+        .map((line) => `> ${line}`)
+        .join('\r\n');
+      fullBody = [
+        fullBody,
         '',
-        forwardBody,
+        `On ${new Date(orig.timestamp).toLocaleString()}, ${orig.fromName} <${orig.fromEmail}> wrote:`,
+        quotedLines,
       ].join('\r\n');
+    } else if (request.mode === 'forward' && request.originalEmail) {
+      const orig = request.originalEmail.raw;
+      fullBody = [
+        fullBody,
+        '',
+        '---------- Forwarded message ---------',
+        `From: ${orig.fromName} <${orig.fromEmail}>`,
+        `Date: ${new Date(orig.timestamp).toLocaleString()}`,
+        `Subject: ${orig.subject}`,
+        `To: ${orig.toEmail}`,
+        '',
+        orig.bodyText || orig.snippet,
+      ].join('\r\n');
+    }
 
+    const sameAccountThreadId =
+      request.mode === 'reply' &&
+      request.originalEmail &&
+      request.originalEmail.raw.accountId === senderAccount.id
+        ? request.originalEmail.raw.threadId
+        : undefined;
+
+    if (!senderAccount.isDemo) {
+      const token = await this.ensureValidAccessToken(senderAccount);
+      const headerLines = [
+        `To: ${to}`,
+        `From: "${senderAccount.label}" <${senderAccount.email}>`,
+      ];
+      if (cc) {
+        headerLines.push(`Cc: ${cc}`);
+      }
+      headerLines.push(`Subject: ${subject}`);
+      if (request.mode === 'reply' && request.originalEmail) {
+        const msgIdHeader =
+          request.originalEmail.raw.headers['message-id'] ||
+          `<${request.originalEmail.raw.id}@mail.gmail.com>`;
+        headerLines.push(`In-Reply-To: ${msgIdHeader}`);
+        headerLines.push(`References: ${msgIdHeader}`);
+      }
+      headerLines.push('Content-Type: text/plain; charset="UTF-8"');
+
+      const rfc2822 = [...headerLines, '', fullBody].join('\r\n');
       const rawBase64Url = btoa(unescape(encodeURIComponent(rfc2822)))
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
         .replace(/=+$/, '');
+
+      const payloadBody: Record<string, string> = { raw: rawBase64Url };
+      if (sameAccountThreadId) {
+        payloadBody['threadId'] = sameAccountThreadId;
+      }
 
       const res = await fetch(
         'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -473,13 +519,47 @@ export class GmailApiService {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ raw: rawBase64Url }),
+          body: JSON.stringify(payloadBody),
         }
       );
       if (!res.ok) {
         throw new Error(`Gmail send failed: ${await res.text()}`);
       }
     }
+
+    const record: SentEmailRecord = {
+      id: `sent_${Date.now()}`,
+      mode: request.mode,
+      fromAccountId: senderAccount.id,
+      fromEmail: senderAccount.email,
+      to,
+      cc,
+      subject,
+      body: fullBody,
+      threadId: sameAccountThreadId,
+      sentAt: new Date().toISOString(),
+    };
+    this.sentMessages.update((prev) => [record, ...prev]);
+    return record;
+  }
+
+  async forwardEmail(
+    email: CategorizedEmail,
+    toAddress: string,
+    note: string,
+    fromAccountId?: string
+  ): Promise<void> {
+    const subject = email.raw.subject.toLowerCase().startsWith('fwd:')
+      ? email.raw.subject
+      : `Fwd: ${email.raw.subject}`;
+    await this.sendEmail({
+      mode: 'forward',
+      fromAccountId: fromAccountId || email.raw.accountId,
+      to: toAddress,
+      subject,
+      body: note,
+      originalEmail: email,
+    });
   }
 
   resetDemoData(): void {
