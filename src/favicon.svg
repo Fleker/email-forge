@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <!-- Deep Obsidian-Indigo Squircle Background -->
+    <linearGradient id="bgGrad" x1="12" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="52%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#090d16"/>
+    </linearGradient>
+
+    <!-- Outer Rim Glow -->
+    <linearGradient id="rimGrad" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.65"/>
+      <stop offset="50%" stop-color="#6366f1" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.75"/>
+    </linearGradient>
+
+    <!-- Metallic Anvil Base Gradient -->
+    <linearGradient id="anvilGrad" x1="28" y1="74" x2="100" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748b"/>
+      <stop offset="45%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+
+    <!-- Electric Cyan-Indigo Envelope Body -->
+    <linearGradient id="envBody" x1="22" y1="30" x2="106" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+
+    <!-- Envelope Top Flap Highlight -->
+    <linearGradient id="envFlap" x1="24" y1="28" x2="104" y2="66" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+
+    <!-- Molten Forge Flame / Lightning Bolt -->
+    <linearGradient id="moltenBolt" x1="52" y1="12" x2="78" y2="74" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="45%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#ea580c"/>
+    </linearGradient>
+
+    <!-- Ambient Forge Glow -->
+    <radialGradient id="forgeGlow" cx="64" cy="56" r="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.45"/>
+      <stop offset="60%" stop-color="#3b82f6" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="dropGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#020617" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle Container -->
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#bgGrad)" stroke="url(#rimGrad)" stroke-width="2.5"/>
+
+  <!-- Ambient Radial Glow -->
+  <circle cx="64" cy="56" r="46" fill="url(#forgeGlow)"/>
+
+  <!-- Multi-Account Orbit Arc -->
+  <path d="M20 70 C 16 40, 42 18, 64 18 C 86 18, 112 40, 108 70" stroke="url(#rimGrad)" stroke-width="1.75" stroke-dasharray="4 4" stroke-linecap="round" opacity="0.7"/>
+
+  <!-- Forged Anvil Base Pedestal (Underneath the Envelope) -->
+  <g filter="url(#dropGlow)">
+    <!-- Anvil Horn & Top Table -->
+    <path d="M18 82 L36 76 H92 L110 82 L94 90 H34 L18 82 Z" fill="url(#anvilGrad)" stroke="#94a3b8" stroke-width="1" stroke-linejoin="round"/>
+    <!-- Anvil Waist & Foot -->
+    <path d="M44 90 H84 L78 100 L92 108 H36 L50 100 L44 90 Z" fill="#1e293b" stroke="#475569" stroke-width="1.2" stroke-linejoin="round"/>
+    <!-- Molten Seam Line on Anvil -->
+    <line x1="38" y1="83" x2="90" y2="83" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+  </g>
+
+  <!-- Origami Envelope Resting on the Anvil -->
+  <g filter="url(#dropGlow)">
+    <rect x="24" y="34" width="80" height="48" rx="9" fill="url(#envBody)" stroke="#93c5fd" stroke-width="1.2"/>
+    <!-- Envelope Bottom Fold Lines -->
+    <path d="M25 80 L53 56 M103 80 L75 56" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" opacity="0.65"/>
+    <!-- Envelope V-Flap -->
+    <path d="M25 36 L64 63 L103 36" fill="url(#envFlap)" opacity="0.35"/>
+    <path d="M25 36 L64 63 L103 36" stroke="#bae6fd" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Molten Forge Lightning Bolt Striking the Envelope Seal -->
+  <g filter="url(#dropGlow)">
+    <path d="M69 14 L47 47 H63 L56 76 L83 41 H66 L69 14 Z" fill="url(#moltenBolt)" stroke="#fef9c3" stroke-width="1.4" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Forge Sparks (Representing Multiple Accounts Converging) -->
+  <circle cx="30" cy="26" r="3" fill="#38bdf8"/>
+  <circle cx="98" cy="26" r="3" fill="#a855f7"/>
+  <circle cx="104" cy="52" r="2.5" fill="#fbbf24"/>
+  <circle cx="24" cy="52" r="2.5" fill="#34d399"/>
+</svg>

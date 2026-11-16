@@ -1,4 +1,4 @@
-# Mail Forge
+# <img src="src/assets/email-forge-icon.png" width="44" height="44" align="absmiddle" alt="Mail Forge Icon" /> Mail Forge
 
 Stateless, multi-account Gmail triage client built with **Angular 20** and **Angular Material**. Instead of downloading gigabytes of duplicate IMAP folders like Thunderbird, Mail Forge queries the **Gmail REST API** directly and routes messages into **purpose-built Category UIs**:
 
