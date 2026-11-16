@@ -1,0 +1,1272 @@
+<div class="app-shell">
+  <!-- Top Material Toolbar -->
+  <mat-toolbar class="top-toolbar">
+    <div class="brand-group">
+      <div class="brand-logo">
+        <mat-icon>bolt</mat-icon>
+      </div>
+      <div>
+        <h1 class="brand-title">Mail Forge</h1>
+        <span class="brand-subtitle">Stateless Multi-Account Gmail Triage</span>
+      </div>
+    </div>
+
+    <!-- Account Switcher Pills -->
+    <div class="account-pills" role="region" aria-label="Account Filter">
+      <button
+        type="button"
+        class="account-pill"
+        [class.active]="selectedAccountId() === 'all'"
+        (click)="selectAccount('all')"
+      >
+        <mat-icon class="pill-icon">all_inbox</mat-icon>
+        <span>All Accounts</span>
+        <span class="pill-count">{{ accountCounts()['all'] || 0 }}</span>
+      </button>
+
+      @for (acct of accounts(); track acct.id) {
+        <button
+          type="button"
+          class="account-pill"
+          [class.active]="selectedAccountId() === acct.id"
+          [matTooltip]="acct.email + (acct.isDemo ? ' (Demo)' : ' (Live OAuth)')"
+          (click)="selectAccount(acct.id)"
+        >
+          <span class="acct-dot" [style.background-color]="acct.color"></span>
+          <span>{{ acct.label }}</span>
+          <span class="pill-count">{{ accountCounts()[acct.id] || 0 }}</span>
+        </button>
+      }
+
+      <button
+        mat-stroked-button
+        class="add-account-btn"
+        (click)="openOAuthModal()"
+      >
+        <mat-icon>person_add</mat-icon>
+        Accounts / OAuth
+      </button>
+    </div>
+
+    <!-- Search & Global Sync Actions -->
+    <div class="toolbar-actions">
+      <div class="search-box">
+        <mat-icon class="search-icon">search</mat-icon>
+        <input
+          type="text"
+          placeholder="Search mail, tracking #, repo, biller..."
+          [ngModel]="searchQuery()"
+          (ngModelChange)="searchQuery.set($event)"
+          aria-label="Search emails"
+        />
+        @if (searchQuery()) {
+          <button
+            type="button"
+            class="clear-search-btn"
+            (click)="searchQuery.set('')"
+            aria-label="Clear search"
+          >
+            <mat-icon>close</mat-icon>
+          </button>
+        }
+      </div>
+
+      <button
+        mat-flat-button
+        color="primary"
+        (click)="gmailService.syncAllAccounts()"
+        [disabled]="gmailService.isSyncing()"
+        matTooltip="Fetch latest inbox state via Gmail REST API"
+      >
+        <mat-icon>sync</mat-icon>
+        {{ gmailService.isSyncing() ? 'Syncing...' : 'Sync' }}
+      </button>
+
+      <button
+        mat-icon-button
+        (click)="gmailService.resetDemoData()"
+        matTooltip="Reset Demo Multi-Account Dataset"
+        aria-label="Reset demo data"
+      >
+        <mat-icon>restart_alt</mat-icon>
+      </button>
+    </div>
+  </mat-toolbar>
+
+  <!-- Global Floating 2FA / OTP Quick-Copy Banner -->
+  @if (activeTwoFactorCodes().length > 0 && selectedCategoryId() !== 'two_factor') {
+    <div class="otp-floating-banner" role="region" aria-label="Active 2FA Codes">
+      <div class="otp-banner-label">
+        <mat-icon>vpn_key</mat-icon>
+        <span>Active Verification Codes:</span>
+      </div>
+      <div class="otp-banner-items">
+        @for (otpEmail of activeTwoFactorCodes(); track otpEmail.raw.id) {
+          <div class="otp-chip">
+            <span class="otp-service">{{ otpEmail.twoFactorMeta?.serviceName }}:</span>
+            <code class="otp-code mono">{{ otpEmail.twoFactorMeta?.code }}</code>
+            <span class="otp-acct">({{ otpEmail.raw.accountEmail }})</span>
+            <button
+              mat-flat-button
+              class="otp-copy-btn"
+              (click)="copyCodeAndArchive(otpEmail, $event)"
+            >
+              <mat-icon>content_copy</mat-icon>
+              Copy & Archive
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- Main Workspace Layout -->
+  <div class="workspace-grid">
+    <!-- Left Category Navigation Rail -->
+    <aside class="category-sidebar" aria-label="Email Categories">
+      <div class="sidebar-section-label">UNIFIED STREAM</div>
+
+      <button
+        type="button"
+        class="nav-item"
+        [class.active]="selectedCategoryId() === 'all'"
+        (click)="selectCategory('all')"
+      >
+        <mat-icon class="nav-icon" style="color: #0f172a">inbox</mat-icon>
+        <span class="nav-label">All Mail</span>
+        <span class="nav-badge">{{ categoryCounts()['all'] || 0 }}</span>
+      </button>
+
+      <button
+        type="button"
+        class="nav-item"
+        [class.active]="selectedCategoryId() === 'inbox'"
+        (click)="selectCategory('inbox')"
+      >
+        <mat-icon class="nav-icon" style="color: #4f46e5">chat_bubble_outline</mat-icon>
+        <span class="nav-label">People & Direct</span>
+        <span class="nav-badge">{{ categoryCounts()['inbox'] || 0 }}</span>
+      </button>
+
+      <mat-divider class="sidebar-divider"></mat-divider>
+      <div class="sidebar-section-label">SMART CATEGORY UIS</div>
+
+      @for (plugin of plugins(); track plugin.id) {
+        <button
+          type="button"
+          class="nav-item"
+          [class.active]="selectedCategoryId() === plugin.id"
+          (click)="selectCategory(plugin.id)"
+        >
+          <mat-icon class="nav-icon" [style.color]="plugin.badgeColor">{{
+            plugin.icon
+          }}</mat-icon>
+          <span class="nav-label">{{ plugin.label }}</span>
+          <span class="nav-badge">{{ categoryCounts()[plugin.id] || 0 }}</span>
+          @if (plugin.isCustom) {
+            <span
+              class="delete-cat-btn"
+              title="Delete custom category"
+              (click)="deleteCustomCategory(plugin.id, $event)"
+            >
+              <mat-icon>close</mat-icon>
+            </span>
+          }
+        </button>
+      }
+
+      <button
+        mat-stroked-button
+        class="new-category-btn"
+        (click)="openAddCategoryModal()"
+      >
+        <mat-icon>add_circle_outline</mat-icon>
+        Add Category Rule
+      </button>
+    </aside>
+
+    <!-- Main Polymorphic Category View -->
+    <main class="category-viewport">
+      @switch (activeViewTemplate()) {
+        <!-- ======================================================= -->
+        <!-- 1. ORDERS & PACKAGE TRACKER UI                          -->
+        <!-- ======================================================= -->
+        @case ('orders_tracker') {
+          <section class="view-container">
+            <header class="view-header">
+              <div>
+                <h2 class="view-title">
+                  <mat-icon style="color: #0284c7">local_shipping</mat-icon>
+                  Orders & Package Tracker
+                </h2>
+                <p class="view-subtitle">
+                  Automatically parsed from order confirmations, carrier tracking IDs, and schema.org JSON-LD.
+                </p>
+              </div>
+              <div class="header-actions">
+                <button
+                  mat-stroked-button
+                  (click)="archiveDeliveredOrders()"
+                  [disabled]="ordersSummary().delivered === 0"
+                >
+                  <mat-icon>inventory_2</mat-icon>
+                  Archive Delivered ({{ ordersSummary().delivered }})
+                </button>
+              </div>
+            </header>
+
+            <div class="kpi-strip">
+              <mat-card class="kpi-card">
+                <div class="kpi-label">Out for Delivery Today</div>
+                <div class="kpi-value highlight-blue">{{ ordersSummary().outForDelivery }}</div>
+              </mat-card>
+              <mat-card class="kpi-card">
+                <div class="kpi-label">In Transit / Ordered</div>
+                <div class="kpi-value">{{ ordersSummary().inTransit }}</div>
+              </mat-card>
+              <mat-card class="kpi-card">
+                <div class="kpi-label">Delivered</div>
+                <div class="kpi-value highlight-green">{{ ordersSummary().delivered }}</div>
+              </mat-card>
+            </div>
+
+            <div class="cards-stack">
+              @for (item of activeEmails(); track item.raw.id) {
+                <mat-card class="order-card" [class.unread-card]="item.raw.unread">
+                  <div class="order-card-top">
+                    <div class="order-merchant-group">
+                      <span class="merchant-badge">{{ item.orderMeta?.merchant }}</span>
+                      <span class="order-number mono">#{{ item.orderMeta?.orderNumber }}</span>
+                      @if (getAccountForEmail(item); as acct) {
+                        <span class="acct-tag" [style.border-color]="acct.color">
+                          <span class="acct-dot" [style.background-color]="acct.color"></span>
+                          {{ acct.label }}
+                        </span>
+                      }
+                    </div>
+                    <div class="order-eta-group">
+                      @if (item.orderMeta?.totalAmount) {
+                        <span class="order-price mono">{{ item.orderMeta?.totalAmount }}</span>
+                      }
+                      <span
+                        class="status-pill"
+                        [attr.data-status]="item.orderMeta?.status"
+                      >
+                        {{ item.orderMeta?.status }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <h3 class="order-item-title">{{ item.orderMeta?.itemsSummary }}</h3>
+                  <p class="order-eta-text">
+                    <strong>Delivery Estimate:</strong> {{ item.orderMeta?.estimatedDelivery }}
+                  </p>
+
+                  <!-- 4-Step Delivery Stepper -->
+                  <div class="delivery-stepper" [attr.aria-label]="'Delivery status: ' + item.orderMeta?.status">
+                    <div class="step" [class.completed]="getOrderStepIndex(item.orderMeta?.status) >= 1">
+                      <div class="step-dot"></div>
+                      <span>Ordered</span>
+                    </div>
+                    <div class="step-line" [class.completed]="getOrderStepIndex(item.orderMeta?.status) >= 2"></div>
+                    <div class="step" [class.completed]="getOrderStepIndex(item.orderMeta?.status) >= 2">
+                      <div class="step-dot"></div>
+                      <span>Shipped</span>
+                    </div>
+                    <div class="step-line" [class.completed]="getOrderStepIndex(item.orderMeta?.status) >= 3"></div>
+                    <div class="step" [class.completed]="getOrderStepIndex(item.orderMeta?.status) >= 3">
+                      <div class="step-dot"></div>
+                      <span>Out for Delivery</span>
+                    </div>
+                    <div class="step-line" [class.completed]="getOrderStepIndex(item.orderMeta?.status) >= 4"></div>
+                    <div class="step" [class.completed]="getOrderStepIndex(item.orderMeta?.status) >= 4">
+                      <div class="step-dot"></div>
+                      <span>Delivered</span>
+                    </div>
+                  </div>
+
+                  <div class="order-card-footer">
+                    <div class="tracking-info">
+                      <span class="carrier-chip">{{ item.orderMeta?.carrier }}</span>
+                      @if (item.orderMeta?.trackingNumber; as trk) {
+                        <code class="tracking-code mono">{{ trk }}</code>
+                        <button
+                          mat-icon-button
+                          (click)="copyTrackingNumber(trk, $event)"
+                          matTooltip="Copy Tracking Number"
+                        >
+                          <mat-icon>content_copy</mat-icon>
+                        </button>
+                      }
+                    </div>
+                    <div class="card-actions">
+                      @if (item.orderMeta?.trackingUrl; as url) {
+                        <a
+                          mat-stroked-button
+                          [href]="url"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <mat-icon>open_in_new</mat-icon>
+                          Track Package
+                        </a>
+                      }
+                      <button mat-stroked-button (click)="openForwardModal(item, $event)">
+                        <mat-icon>forward</mat-icon>
+                        Forward
+                      </button>
+                      <button
+                        mat-flat-button
+                        color="primary"
+                        (click)="archiveEmail(item, $event)"
+                      >
+                        <mat-icon>archive</mat-icon>
+                        Archive
+                      </button>
+                    </div>
+                  </div>
+                </mat-card>
+              } @empty {
+                <div class="empty-state">
+                  <mat-icon>inventory</mat-icon>
+                  <p>No active orders or shipments matching your filter.</p>
+                </div>
+              }
+            </div>
+          </section>
+        }
+
+        <!-- ======================================================= -->
+        <!-- 2. NOTIFICATIONS ROLLUP UI (GitHub, CI/CD)              -->
+        <!-- ======================================================= -->
+        @case ('notifications_rollup') {
+          <section class="view-container">
+            <header class="view-header">
+              <div>
+                <h2 class="view-title">
+                  <mat-icon style="color: #d97706">notifications_active</mat-icon>
+                  Developer & Service Notifications
+                </h2>
+                <p class="view-subtitle">
+                  Grouped by repository & project for one-click batch triage.
+                </p>
+              </div>
+              <div class="header-actions">
+                <button
+                  mat-stroked-button
+                  (click)="archiveAllInCurrentCategory()"
+                  [disabled]="activeEmails().length === 0"
+                >
+                  <mat-icon>done_all</mat-icon>
+                  Archive All Notifications ({{ activeEmails().length }})
+                </button>
+              </div>
+            </header>
+
+            <mat-accordion multi class="repo-accordion">
+              @for (group of notificationGroups(); track group.repoOrProject) {
+                <mat-expansion-panel [expanded]="true" class="repo-panel">
+                  <mat-expansion-panel-header>
+                    <mat-panel-title class="repo-header-title">
+                      <mat-icon class="repo-icon">folder_special</mat-icon>
+                      <span class="mono">{{ group.repoOrProject }}</span>
+                      <span class="repo-count-chip">{{ group.items.length }}</span>
+                    </mat-panel-title>
+                    <mat-panel-description class="repo-header-actions">
+                      <button
+                        mat-stroked-button
+                        class="archive-repo-btn"
+                        (click)="archiveRepoGroup(group, $event)"
+                      >
+                        <mat-icon>archive</mat-icon>
+                        Archive Repo ({{ group.items.length }})
+                      </button>
+                    </mat-panel-description>
+                  </mat-expansion-panel-header>
+
+                  <div class="notif-list">
+                    @for (item of group.items; track item.raw.id) {
+                      <div class="notif-row" [class.unread-row]="item.raw.unread">
+                        <div class="notif-main">
+                          <span
+                            class="notif-badge"
+                            [attr.data-kind]="item.notificationMeta?.kind"
+                          >
+                            {{ item.notificationMeta?.statusBadge }}
+                          </span>
+                          @if (item.notificationMeta?.referenceId; as refId) {
+                            <span class="notif-ref mono">{{ refId }}</span>
+                          }
+                          <span class="notif-subject">{{ item.raw.subject }}</span>
+                          @if (getAccountForEmail(item); as acct) {
+                            <span class="acct-tag" [style.border-color]="acct.color">
+                              <span class="acct-dot" [style.background-color]="acct.color"></span>
+                              {{ acct.label }}
+                            </span>
+                          }
+                        </div>
+                        <div class="notif-actions">
+                          @if (item.notificationMeta?.actionUrl; as url) {
+                            <a
+                              mat-stroked-button
+                              [href]="url"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <mat-icon>open_in_new</mat-icon>
+                              Open
+                            </a>
+                          }
+                          <button
+                            mat-icon-button
+                            (click)="archiveEmail(item, $event)"
+                            matTooltip="Archive notification"
+                          >
+                            <mat-icon>archive</mat-icon>
+                          </button>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                </mat-expansion-panel>
+              } @empty {
+                <div class="empty-state">
+                  <mat-icon>Task_alt</mat-icon>
+                  <p>All GitHub & service notifications are cleared!</p>
+                </div>
+              }
+            </mat-accordion>
+          </section>
+        }
+
+        <!-- ======================================================= -->
+        <!-- 3. NEWSLETTERS READER & QUICK FORWARD UI                -->
+        <!-- ======================================================= -->
+        @case ('newsletters_reader') {
+          <section class="view-container">
+            <header class="view-header">
+              <div>
+                <h2 class="view-title">
+                  <mat-icon style="color: #2563eb">newspaper</mat-icon>
+                  Newsletter Reading Deck
+                </h2>
+                <p class="view-subtitle">
+                  Clean magazine view with key takeaways and one-click Archive or Forward.
+                </p>
+              </div>
+              <div class="header-actions">
+                <button
+                  mat-stroked-button
+                  (click)="archiveAllInCurrentCategory()"
+                  [disabled]="activeEmails().length === 0"
+                >
+                  <mat-icon>done_all</mat-icon>
+                  Archive All Issues ({{ activeEmails().length }})
+                </button>
+              </div>
+            </header>
+
+            <div class="newsletter-split-layout">
+              <!-- Left Issue List -->
+              <div class="newsletter-list">
+                @for (item of activeEmails(); track item.raw.id) {
+                  <mat-card
+                    class="newsletter-list-item"
+                    [class.selected]="selectedNewsletter()?.raw?.id === item.raw.id"
+                    [class.unread-card]="item.raw.unread"
+                    (click)="selectEmail(item)"
+                  >
+                    <div class="nl-item-top">
+                      <span class="nl-pub-name">{{
+                        item.newsletterMeta?.publication
+                      }}</span>
+                      <span class="nl-read-time">
+                        {{ item.newsletterMeta?.estimatedReadMinutes }} min read
+                      </span>
+                    </div>
+                    <h4 class="nl-item-subject">{{ item.raw.subject }}</h4>
+                    <div class="nl-item-footer">
+                      @if (getAccountForEmail(item); as acct) {
+                        <span class="acct-tag" [style.border-color]="acct.color">
+                          <span class="acct-dot" [style.background-color]="acct.color"></span>
+                          {{ acct.label }}
+                        </span>
+                      }
+                      <div class="nl-quick-btns">
+                        <button
+                          mat-icon-button
+                          (click)="openForwardModal(item, $event)"
+                          matTooltip="Quick Forward"
+                        >
+                          <mat-icon>forward</mat-icon>
+                        </button>
+                        <button
+                          mat-icon-button
+                          (click)="archiveEmail(item, $event)"
+                          matTooltip="Archive Issue"
+                        >
+                          <mat-icon>archive</mat-icon>
+                        </button>
+                      </div>
+                    </div>
+                  </mat-card>
+                } @empty {
+                  <div class="empty-state">
+                    <mat-icon>menu_book</mat-icon>
+                    <p>No unread newsletters in your reading deck.</p>
+                  </div>
+                }
+              </div>
+
+              <!-- Right Reader Pane -->
+              @if (selectedNewsletter(); as activeNl) {
+                <mat-card class="newsletter-reader-pane">
+                  <div class="reader-toolbar">
+                    <div>
+                      <span class="nl-pub-badge">{{
+                        activeNl.newsletterMeta?.publication
+                      }}</span>
+                      <span class="reader-date">{{
+                        activeNl.raw.timestamp | date : 'medium'
+                      }}</span>
+                    </div>
+                    <div class="reader-action-bar">
+                      <button
+                        mat-flat-button
+                        color="primary"
+                        (click)="archiveEmail(activeNl)"
+                      >
+                        <mat-icon>archive</mat-icon>
+                        Archive Issue
+                      </button>
+                      <button
+                        mat-stroked-button
+                        (click)="openForwardModal(activeNl)"
+                      >
+                        <mat-icon>forward_to_inbox</mat-icon>
+                        Forward Issue
+                      </button>
+                      @if (activeNl.newsletterMeta?.unsubscribeUrl; as unsubUrl) {
+                        <a
+                          mat-button
+                          [href]="unsubUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Unsubscribe
+                        </a>
+                      }
+                    </div>
+                  </div>
+
+                  <h2 class="reader-headline">{{ activeNl.raw.subject }}</h2>
+
+                  @if (activeNl.newsletterMeta?.keyTakeaways?.length) {
+                    <div class="takeaways-box">
+                      <div class="takeaways-title">
+                        <mat-icon>auto_awesome</mat-icon>
+                        Quick Takeaways
+                      </div>
+                      <ul>
+                        @for (pt of activeNl.newsletterMeta?.keyTakeaways; track pt) {
+                          <li>{{ pt }}</li>
+                        }
+                      </ul>
+                    </div>
+                  }
+
+                  <div class="reader-body">
+                    @for (para of activeNl.raw.bodyText.split('\n\n'); track $index) {
+                      <p>{{ para }}</p>
+                    }
+                  </div>
+                </mat-card>
+              }
+            </div>
+          </section>
+        }
+
+        <!-- ======================================================= -->
+        <!-- 4. 2FA & VERIFICATION CODES VAULT UI                    -->
+        <!-- ======================================================= -->
+        @case ('two_factor_vault') {
+          <section class="view-container">
+            <header class="view-header">
+              <div>
+                <h2 class="view-title">
+                  <mat-icon style="color: #dc2626">key</mat-icon>
+                  2FA & One-Time Passcodes
+                </h2>
+                <p class="view-subtitle">
+                  Extracted security codes across all accounts. One click copies the code and archives the email.
+                </p>
+              </div>
+              <div class="header-actions">
+                <button
+                  mat-stroked-button
+                  (click)="archiveAllInCurrentCategory()"
+                  [disabled]="activeEmails().length === 0"
+                >
+                  <mat-icon>delete_sweep</mat-icon>
+                  Sweep All Codes ({{ activeEmails().length }})
+                </button>
+              </div>
+            </header>
+
+            <div class="otp-vault-grid">
+              @for (item of activeEmails(); track item.raw.id) {
+                <mat-card class="otp-vault-card">
+                  <div class="otp-card-header">
+                    <span class="otp-service-title">{{
+                      item.twoFactorMeta?.serviceName
+                    }}</span>
+                    @if (getAccountForEmail(item); as acct) {
+                      <span class="acct-tag" [style.border-color]="acct.color">
+                        <span class="acct-dot" [style.background-color]="acct.color"></span>
+                        {{ acct.email }}
+                      </span>
+                    }
+                  </div>
+
+                  <div class="otp-code-display mono">
+                    {{ item.twoFactorMeta?.code }}
+                  </div>
+
+                  <p class="otp-meta-line">
+                    Expires in ~{{ item.twoFactorMeta?.expiresInMinutes }}m •
+                    {{ item.raw.subject }}
+                  </p>
+
+                  <div class="otp-card-actions">
+                    <button
+                      mat-flat-button
+                      color="primary"
+                      (click)="copyCodeAndArchive(item, $event)"
+                    >
+                      <mat-icon>content_copy</mat-icon>
+                      Copy Code & Archive
+                    </button>
+                    <button
+                      mat-stroked-button
+                      (click)="archiveEmail(item, $event)"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </mat-card>
+              } @empty {
+                <div class="empty-state">
+                  <mat-icon>verified_user</mat-icon>
+                  <p>No pending 2FA codes.</p>
+                </div>
+              }
+            </div>
+          </section>
+        }
+
+        <!-- ======================================================= -->
+        <!-- 5. BILLS & STATEMENTS LEDGER UI                         -->
+        <!-- ======================================================= -->
+        @case ('bills_ledger') {
+          <section class="view-container">
+            <header class="view-header">
+              <div>
+                <h2 class="view-title">
+                  <mat-icon style="color: #059669">receipt_long</mat-icon>
+                  Bills & Credit Card Statements
+                </h2>
+                <p class="view-subtitle">
+                  Structured statement balances, due dates, and Autopay status across all accounts.
+                </p>
+              </div>
+            </header>
+
+            <div class="kpi-strip">
+              <mat-card class="kpi-card">
+                <div class="kpi-label">Total Statement Balance Due</div>
+                <div class="kpi-value mono">{{ billsSummary().totalDueFormatted }}</div>
+              </mat-card>
+              <mat-card class="kpi-card">
+                <div class="kpi-label">Manual Payment Required</div>
+                <div class="kpi-value highlight-amber">
+                  {{ billsSummary().manualActionCount }}
+                </div>
+              </mat-card>
+              <mat-card class="kpi-card">
+                <div class="kpi-label">Autopay Scheduled</div>
+                <div class="kpi-value highlight-green">
+                  {{ billsSummary().autopayCount }}
+                </div>
+              </mat-card>
+            </div>
+
+            <div class="cards-stack">
+              @for (item of activeEmails(); track item.raw.id) {
+                <mat-card class="bill-card">
+                  <div class="bill-row">
+                    <div class="bill-biller-col">
+                      <div class="biller-header">
+                        <span class="biller-name">{{ item.billMeta?.billerName }}</span>
+                        <span class="bill-type-chip">{{ item.billMeta?.billType }}</span>
+                        @if (item.billMeta?.accountLast4; as last4) {
+                          <span class="last4-chip mono">••{{ last4 }}</span>
+                        }
+                        @if (getAccountForEmail(item); as acct) {
+                          <span class="acct-tag" [style.border-color]="acct.color">
+                            <span class="acct-dot" [style.background-color]="acct.color"></span>
+                            {{ acct.label }}
+                          </span>
+                        }
+                      </div>
+                      <p class="bill-subject">{{ item.raw.subject }}</p>
+                    </div>
+
+                    <div class="bill-metrics-col">
+                      <div class="bill-metric">
+                        <span class="metric-caption">Amount Due</span>
+                        <span class="metric-amount mono">{{
+                          item.billMeta?.amountDue
+                        }}</span>
+                      </div>
+                      <div class="bill-metric">
+                        <span class="metric-caption">Due Date</span>
+                        <span class="metric-due">{{ item.billMeta?.dueDate }}</span>
+                      </div>
+                      @if (item.billMeta?.minimumPayment; as minPay) {
+                        <div class="bill-metric">
+                          <span class="metric-caption">Min Payment</span>
+                          <span class="mono">{{ minPay }}</span>
+                        </div>
+                      }
+                      <span
+                        class="bill-status-badge"
+                        [attr.data-status]="item.billMeta?.status"
+                      >
+                        {{ item.billMeta?.status }}
+                      </span>
+                    </div>
+
+                    <div class="bill-actions-col">
+                      @if (item.billMeta?.payUrl; as payUrl) {
+                        <a
+                          mat-stroked-button
+                          [href]="payUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <mat-icon>payment</mat-icon>
+                          Pay Online
+                        </a>
+                      }
+                      <button
+                        mat-flat-button
+                        color="primary"
+                        (click)="archiveEmail(item, $event)"
+                      >
+                        <mat-icon>check_circle</mat-icon>
+                        Mark Paid & Archive
+                      </button>
+                    </div>
+                  </div>
+                </mat-card>
+              } @empty {
+                <div class="empty-state">
+                  <mat-icon>savings</mat-icon>
+                  <p>No open bills or statements due!</p>
+                </div>
+              }
+            </div>
+          </section>
+        }
+
+        <!-- ======================================================= -->
+        <!-- 6. EVENTS & INVITATIONS AGENDA UI                       -->
+        <!-- ======================================================= -->
+        @case ('events_agenda') {
+          <section class="view-container">
+            <header class="view-header">
+              <div>
+                <h2 class="view-title">
+                  <mat-icon style="color: #7c3aed">event</mat-icon>
+                  Events & Calendar Invitations
+                </h2>
+                <p class="view-subtitle">
+                  Parsed calendar invites, Luma/Eventbrite RSVPs, and video meeting links.
+                </p>
+              </div>
+            </header>
+
+            <div class="cards-stack">
+              @for (item of activeEmails(); track item.raw.id) {
+                <mat-card class="event-card">
+                  <div class="event-row">
+                    <div class="event-icon-box">
+                      <mat-icon>{{
+                        item.eventMeta?.isVirtual ? 'videocam' : 'place'
+                      }}</mat-icon>
+                    </div>
+
+                    <div class="event-details">
+                      <div class="event-top-bar">
+                        <h3 class="event-title">{{ item.eventMeta?.eventTitle }}</h3>
+                        <span class="rsvp-pill" [attr.data-rsvp]="getEffectiveRsvp(item)">
+                          {{ getEffectiveRsvp(item) }}
+                        </span>
+                        @if (getAccountForEmail(item); as acct) {
+                          <span class="acct-tag" [style.border-color]="acct.color">
+                            <span class="acct-dot" [style.background-color]="acct.color"></span>
+                            {{ acct.label }}
+                          </span>
+                        }
+                      </div>
+                      <p class="event-meta-line">
+                        <mat-icon class="inline-icon">schedule</mat-icon>
+                        <strong>When:</strong> {{ item.eventMeta?.startTime }}
+                      </p>
+                      <p class="event-meta-line">
+                        <mat-icon class="inline-icon">location_on</mat-icon>
+                        <strong>Where:</strong> {{ item.eventMeta?.location }}
+                      </p>
+                      <p class="event-meta-line">
+                        <mat-icon class="inline-icon">person</mat-icon>
+                        <strong>Organizer:</strong> {{ item.eventMeta?.organizer }}
+                      </p>
+                    </div>
+
+                    <div class="event-actions">
+                      @if (item.eventMeta?.meetingUrl; as meetUrl) {
+                        <a
+                          mat-flat-button
+                          color="primary"
+                          [href]="meetUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <mat-icon>video_call</mat-icon>
+                          Join / Open Event
+                        </a>
+                      }
+                      <div class="rsvp-btn-group">
+                        <button
+                          mat-stroked-button
+                          (click)="rsvpEvent(item, 'Accepted')"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          mat-stroked-button
+                          (click)="rsvpEvent(item, 'Tentative')"
+                        >
+                          Maybe
+                        </button>
+                        <button
+                          mat-stroked-button
+                          (click)="rsvpEvent(item, 'Declined', true)"
+                        >
+                          Decline & Archive
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </mat-card>
+              } @empty {
+                <div class="empty-state">
+                  <mat-icon>event_available</mat-icon>
+                  <p>No pending invitations or upcoming event emails.</p>
+                </div>
+              }
+            </div>
+          </section>
+        }
+
+        <!-- ======================================================= -->
+        <!-- 7. UNIFIED STREAM & CUSTOM USER CATEGORIES UI           -->
+        <!-- ======================================================= -->
+        @default {
+          <section class="view-container">
+            <header class="view-header">
+              <div>
+                <h2 class="view-title">
+                  <mat-icon>inbox</mat-icon>
+                  {{
+                    selectedCategoryId() === 'all'
+                      ? 'Unified All-Account Stream'
+                      : selectedCategoryId() === 'inbox'
+                      ? 'People & Direct Messages'
+                      : getPluginForCategory(selectedCategoryId())?.label
+                  }}
+                </h2>
+                <p class="view-subtitle">
+                  {{
+                    selectedCategoryId() === 'all'
+                      ? 'Every active message across all connected Gmail accounts with smart category tags.'
+                      : selectedCategoryId() === 'inbox'
+                      ? 'Human-to-human emails filtered free of bulk newsletters, receipts, and automated alerts.'
+                      : getPluginForCategory(selectedCategoryId())?.description
+                  }}
+                </p>
+              </div>
+            </header>
+
+            <div class="cards-stack">
+              @for (item of activeEmails(); track item.raw.id) {
+                <mat-card class="stream-card" [class.unread-card]="item.raw.unread">
+                  <div class="stream-card-header">
+                    <div class="stream-sender-group">
+                      <button
+                        mat-icon-button
+                        class="star-btn"
+                        (click)="toggleStar(item, $event)"
+                        aria-label="Toggle star"
+                      >
+                        <mat-icon [class.starred]="item.raw.starred">{{
+                          item.raw.starred ? 'star' : 'star_border'
+                        }}</mat-icon>
+                      </button>
+                      <span class="sender-name">{{ item.raw.fromName }}</span>
+                      <span class="sender-email">&lt;{{ item.raw.fromEmail }}&gt;</span>
+
+                      @if (getPluginForCategory(item.categoryId); as plug) {
+                        <button
+                          type="button"
+                          class="category-chip"
+                          [style.background-color]="plug.badgeColor + '18'"
+                          [style.color]="plug.badgeColor"
+                          (click)="selectCategory(plug.id)"
+                        >
+                          <mat-icon class="chip-mini-icon">{{ plug.icon }}</mat-icon>
+                          {{ plug.label }}
+                        </button>
+                      }
+
+                      @if (item.customMeta) {
+                        @for (entry of item.customMeta | keyvalue; track entry.key) {
+                          <span class="extracted-meta-chip mono">
+                            {{ entry.key }}: {{ entry.value }}
+                          </span>
+                        }
+                      }
+                    </div>
+
+                    <div class="stream-right-meta">
+                      @if (getAccountForEmail(item); as acct) {
+                        <span class="acct-tag" [style.border-color]="acct.color">
+                          <span class="acct-dot" [style.background-color]="acct.color"></span>
+                          {{ acct.label }}
+                        </span>
+                      }
+                      <span class="stream-time">{{
+                        item.raw.timestamp | date : 'shortTime'
+                      }}</span>
+                    </div>
+                  </div>
+
+                  <h3 class="stream-subject">{{ item.raw.subject }}</h3>
+                  <p class="stream-snippet">{{ item.raw.bodyText || item.raw.snippet }}</p>
+
+                  <div class="stream-actions">
+                    <button mat-stroked-button (click)="openForwardModal(item, $event)">
+                      <mat-icon>forward</mat-icon>
+                      Forward
+                    </button>
+                    <button
+                      mat-flat-button
+                      color="primary"
+                      (click)="archiveEmail(item, $event)"
+                    >
+                      <mat-icon>archive</mat-icon>
+                      Archive
+                    </button>
+                  </div>
+                </mat-card>
+              } @empty {
+                <div class="empty-state">
+                  <mat-icon>done_all</mat-icon>
+                  <p>Inbox Zero for this view!</p>
+                </div>
+              }
+            </div>
+          </section>
+        }
+      }
+    </main>
+  </div>
+
+  <!-- =============================================================== -->
+  <!-- MODAL 1: FORWARD NEWSLETTER / EMAIL                             -->
+  <!-- =============================================================== -->
+  @if (forwardingEmail(); as fwd) {
+    <div class="modal-backdrop" (click)="closeForwardModal()">
+      <mat-card class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>
+            <mat-icon>forward_to_inbox</mat-icon>
+            Forward via {{ fwd.raw.accountEmail }}
+          </h3>
+          <button mat-icon-button (click)="closeForwardModal()">
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+
+        <p class="modal-subtitle">
+          <strong>Subject:</strong> Fwd: {{ fwd.raw.subject }}
+        </p>
+
+        <div class="form-stack">
+          <label class="field-label">Recipient Email</label>
+          <input
+            type="email"
+            class="text-input"
+            placeholder="colleague@example.com"
+            [ngModel]="forwardTo()"
+            (ngModelChange)="forwardTo.set($event)"
+          />
+
+          <label class="field-label">Personal Note (Prepended)</label>
+          <textarea
+            rows="3"
+            class="text-input"
+            [ngModel]="forwardNote()"
+            (ngModelChange)="forwardNote.set($event)"
+          ></textarea>
+
+          <label class="checkbox-row">
+            <input
+              type="checkbox"
+              [ngModel]="forwardArchiveAfter()"
+              (ngModelChange)="forwardArchiveAfter.set($event)"
+            />
+            <span>Automatically archive this email after forwarding</span>
+          </label>
+        </div>
+
+        <div class="modal-footer">
+          <button mat-button (click)="closeForwardModal()">Cancel</button>
+          <button
+            mat-flat-button
+            color="primary"
+            (click)="submitForward()"
+            [disabled]="!forwardTo().trim()"
+          >
+            <mat-icon>send</mat-icon>
+            Send & {{ forwardArchiveAfter() ? 'Archive' : 'Keep' }}
+          </button>
+        </div>
+      </mat-card>
+    </div>
+  }
+
+  <!-- =============================================================== -->
+  <!-- MODAL 2: ADD CUSTOM CATEGORY RULE (EXTENSIBILITY ENGINE)        -->
+  <!-- =============================================================== -->
+  @if (showAddCategoryModal()) {
+    <div class="modal-backdrop" (click)="closeAddCategoryModal()">
+      <mat-card class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>
+            <mat-icon>extension</mat-icon>
+            Add Custom Category Rule
+          </h3>
+          <button mat-icon-button (click)="closeAddCategoryModal()">
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+
+        <p class="modal-subtitle">
+          Define sender, subject, or body keywords (plus an optional regex extractor) to dynamically create a new sidebar category.
+        </p>
+
+        <div class="form-stack">
+          <div class="two-col">
+            <div>
+              <label class="field-label">Category Name</label>
+              <input
+                type="text"
+                class="text-input"
+                placeholder="e.g. Travel & Flights"
+                [ngModel]="newCatLabel()"
+                (ngModelChange)="newCatLabel.set($event)"
+              />
+            </div>
+            <div>
+              <label class="field-label">Material Icon Name</label>
+              <input
+                type="text"
+                class="text-input"
+                placeholder="flight_takeoff"
+                [ngModel]="newCatIcon()"
+                (ngModelChange)="newCatIcon.set($event)"
+              />
+            </div>
+          </div>
+
+          <label class="field-label">Sender Keywords (comma-separated)</label>
+          <input
+            type="text"
+            class="text-input"
+            placeholder="delta.com, united.com, airbnb.com"
+            [ngModel]="newCatSenders()"
+            (ngModelChange)="newCatSenders.set($event)"
+          />
+
+          <label class="field-label">Subject Keywords (comma-separated)</label>
+          <input
+            type="text"
+            class="text-input"
+            placeholder="boarding pass, flight confirmation, reservation"
+            [ngModel]="newCatSubjects()"
+            (ngModelChange)="newCatSubjects.set($event)"
+          />
+
+          <div class="two-col">
+            <div>
+              <label class="field-label">Optional Regex Extractor</label>
+              <input
+                type="text"
+                class="text-input mono"
+                placeholder="Confirmation\s*#?\s*([A-Z0-9]{6})"
+                [ngModel]="newCatRegex()"
+                (ngModelChange)="newCatRegex.set($event)"
+              />
+            </div>
+            <div>
+              <label class="field-label">Extracted Badge Label</label>
+              <input
+                type="text"
+                class="text-input"
+                placeholder="PNR / Code"
+                [ngModel]="newCatRegexLabel()"
+                (ngModelChange)="newCatRegexLabel.set($event)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button mat-button (click)="closeAddCategoryModal()">Cancel</button>
+          <button
+            mat-flat-button
+            color="primary"
+            (click)="saveCustomCategory()"
+            [disabled]="!newCatLabel().trim()"
+          >
+            <mat-icon>add</mat-icon>
+            Register Category
+          </button>
+        </div>
+      </mat-card>
+    </div>
+  }
+
+  <!-- =============================================================== -->
+  <!-- MODAL 3: GMAIL OAUTH2 PERSISTENT TOKEN SETUP                    -->
+  <!-- =============================================================== -->
+  @if (showOAuthModal()) {
+    <div class="modal-backdrop" (click)="closeOAuthModal()">
+      <mat-card class="modal-dialog wide-modal" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>
+            <mat-icon>verified_user</mat-icon>
+            Multi-Account Gmail API Setup (Zero Re-Login)
+          </h3>
+          <button mat-icon-button (click)="closeOAuthModal()">
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+
+        <div class="oauth-guide-box">
+          <strong>How to prevent the 7-day OAuth Refresh Token expiration:</strong>
+          <ol>
+            <li>In Google Cloud Console, enable the <strong>Gmail API</strong>.</li>
+            <li>
+              Under <strong>OAuth consent screen</strong>, set Publishing status to
+              <strong>In Production</strong> (do <em>not</em> submit for paid verification; click through the
+              <code>Advanced -&gt; Go to Mail Forge (unsafe)</code> screen once per personal Gmail account).
+            </li>
+            <li>
+              Create a <strong>Web application</strong> OAuth Client ID with Authorized redirect URI:
+              <code class="mono">{{ oauthRedirectUri() }}</code>
+            </li>
+          </ol>
+        </div>
+
+        <div class="form-stack">
+          <label class="field-label">GCP OAuth Client ID</label>
+          <input
+            type="text"
+            class="text-input mono"
+            placeholder="1234567890-abcdef.apps.googleusercontent.com"
+            [ngModel]="oauthClientId()"
+            (ngModelChange)="oauthClientId.set($event)"
+          />
+
+          <label class="field-label">GCP OAuth Client Secret</label>
+          <input
+            type="password"
+            class="text-input mono"
+            placeholder="GOCSPX-..."
+            [ngModel]="oauthClientSecret()"
+            (ngModelChange)="oauthClientSecret.set($event)"
+          />
+
+          <div class="two-col">
+            <div>
+              <label class="field-label">Redirect URI</label>
+              <input
+                type="text"
+                class="text-input mono"
+                [ngModel]="oauthRedirectUri()"
+                (ngModelChange)="oauthRedirectUri.set($event)"
+              />
+            </div>
+            <div>
+              <label class="field-label">Account Hint (Optional)</label>
+              <input
+                type="email"
+                class="text-input"
+                placeholder="you@gmail.com"
+                [ngModel]="oauthLoginHint()"
+                (ngModelChange)="oauthLoginHint.set($event)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="connected-accounts-list">
+          <h4>Connected Accounts ({{ accounts().length }})</h4>
+          @for (acct of accounts(); track acct.id) {
+            <div class="connected-acct-row">
+              <span class="acct-dot" [style.background-color]="acct.color"></span>
+              <strong class="acct-row-label">{{ acct.label }}</strong>
+              <span class="mono">{{ acct.email }}</span>
+              <span class="acct-mode-badge">{{
+                acct.isDemo ? 'Demo Seed' : 'Permanent Refresh Token'
+              }}</span>
+              <button
+                mat-icon-button
+                (click)="gmailService.removeAccount(acct.id)"
+                matTooltip="Remove Account"
+              >
+                <mat-icon>delete_outline</mat-icon>
+              </button>
+            </div>
+          }
+        </div>
+
+        <div class="modal-footer">
+          <button mat-stroked-button (click)="saveOAuthSettings()">
+            Save Credentials
+          </button>
+          <button
+            mat-flat-button
+            color="primary"
+            (click)="startAddGmailAccount()"
+          >
+            <mat-icon>add_link</mat-icon>
+            Authorize & Add Gmail Account
+          </button>
+        </div>
+      </mat-card>
+    </div>
+  }
+</div>
